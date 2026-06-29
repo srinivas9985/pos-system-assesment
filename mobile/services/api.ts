@@ -1,5 +1,5 @@
 import { API_URL, PAGE_SIZE } from '@/constants/config';
-import type { Cart, Category, Order, Product, ProductsResponse, SyncResponse, Tag } from '@/types';
+import type { Cart, Category, Order, Product, ProductsResponse, SyncResponse, Tag, VersionConflictError } from '@/types';
 
 function encodeListCursor(id: number): string {
   const padded = String(Math.max(0, id - 1)).padStart(10, '0');
@@ -13,12 +13,43 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
+  private async parseBumpResponse(
+    res: Response
+  ): Promise<{ id: number; version: number }> {
+    if (res.status === 409) {
+      const body = await res.json();
+      const err = new Error('version_conflict') as VersionConflictError;
+      err.status = 409;
+      err.currentVersion = body.current_version;
+      throw err;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
   async getProducts(cursor?: string, limit = PAGE_SIZE): Promise<ProductsResponse> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursor) params.set('after', cursor);
     const res = await fetch(`${this.baseUrl}/products?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  }
+
+  /**
+   * Server-side search when backend supports `GET /products?search=...`.
+   * Returns null if the backend ignores the param (no `search_applied` in response).
+   * Results are persisted via `upsertProductsCache` — no cache-layer changes needed when API goes live.
+   */
+  async searchProducts(query: string, limit = PAGE_SIZE): Promise<Product[] | null> {
+    const params = new URLSearchParams({
+      search: query.trim(),
+      limit: String(limit),
+    });
+    const res = await fetch(`${this.baseUrl}/products?${params}`);
+    if (!res.ok) return null;
+    const body: ProductsResponse = await res.json();
+    if (!body.search_applied) return null;
+    return body.data ?? [];
   }
 
   async getProduct(id: number): Promise<Product> {
@@ -40,8 +71,7 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expected_version: expectedVersion }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return this.parseBumpResponse(res);
   }
 
   async getCategories(): Promise<Category[]> {
@@ -56,8 +86,7 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expected_version: expectedVersion }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return this.parseBumpResponse(res);
   }
 
   async getTags(): Promise<Tag[]> {
@@ -72,8 +101,17 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expected_version: expectedVersion }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    return this.parseBumpResponse(res);
+  }
+
+  private async parseError(res: Response): Promise<string> {
+    try {
+      const body = await res.json();
+      if (body?.error) return String(body.error);
+    } catch {
+      // ignore parse errors
+    }
+    return `HTTP ${res.status}`;
   }
 
   async cartAction(payload: {
@@ -89,7 +127,7 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await this.parseError(res));
     return res.json();
   }
 
@@ -99,7 +137,7 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_id: deviceId }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await this.parseError(res));
     return res.json();
   }
 

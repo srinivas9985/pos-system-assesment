@@ -13,9 +13,26 @@ export function SearchBar({ onResults }: Props) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [focused, setFocused] = useState(false);
-  const { search } = useProductSearch();
+  const { search, products, fromCache } = useProductSearch();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const onResultsRef = useRef(onResults);
+  onResultsRef.current = onResults;
+
+  const runSearch = async (text: string, requestId: number) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      onResultsRef.current(null, false);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const results = await search(trimmed);
+    if (requestId !== requestIdRef.current) return;
+    onResultsRef.current(results.slice(0, 20), true);
+    setSearching(false);
+  };
 
   useEffect(() => {
     return () => {
@@ -23,25 +40,26 @@ export function SearchBar({ onResults }: Props) {
     };
   }, []);
 
+  // Re-run search when cached/loaded products arrive while a query is active.
+  useEffect(() => {
+    if (!query.trim()) return;
+    const requestId = ++requestIdRef.current;
+    void runSearch(query, requestId);
+  }, [products, fromCache, search]);
+
   const handleChange = (text: string) => {
     setQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     if (!text.trim()) {
-      onResults(null, false);
+      onResultsRef.current(null, false);
       setSearching(false);
       return;
     }
 
-    setSearching(true);
     const requestId = ++requestIdRef.current;
-
-    debounceRef.current = setTimeout(async () => {
-      const results = await search(text);
-      if (requestId === requestIdRef.current) {
-        onResults(results.slice(0, 20), true);
-        setSearching(false);
-      }
+    debounceRef.current = setTimeout(() => {
+      void runSearch(text, requestId);
     }, DEBOUNCE_MS);
   };
 

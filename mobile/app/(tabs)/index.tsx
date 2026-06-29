@@ -4,28 +4,19 @@ import { useRouter } from 'expo-router';
 import { ProductCard } from '@/components/ProductCard';
 import { SearchBar } from '@/components/SearchBar';
 import { useProducts } from '@/hooks/useProducts';
-import { useWebSocket } from '@/hooks/useWebSocket';
-import { useAppState } from '@/hooks/useAppState';
 import { useCartStore } from '@/store/cartStore';
 import { useProductStore } from '@/store/productStore';
-import type { Product, SyncEvent } from '@/types';
+import type { Product } from '@/types';
 
 export default function ProductsScreen() {
   const router = useRouter();
   const { products, isLoading, loadNextPage } = useProducts();
   const addItem = useCartStore((s) => s.addItem);
+  const fromCache = useProductStore((s) => s.fromCache);
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
   const [isSearchActive, setIsSearchActive] = useState(false);
 
   const displayProducts = isSearchActive ? (searchResults ?? []) : products;
-
-  useWebSocket((event: SyncEvent) => {
-    console.log('sync event', event);
-  });
-
-  useAppState(() => {
-    // foreground resume
-  });
 
   const handleEndReached = useCallback(() => {
     if (!isSearchActive) loadNextPage();
@@ -40,6 +31,9 @@ export default function ProductsScreen() {
 
   return (
     <View style={styles.container}>
+      {fromCache && (
+        <Text style={styles.offlineBanner}>Offline — showing cached products</Text>
+      )}
       <SearchBar
         onResults={(results, active) => {
           setSearchResults(results);
@@ -76,6 +70,15 @@ export default function ProductsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5', padding: 12 },
+  offlineBanner: {
+    backgroundColor: '#fff3e0',
+    color: '#e65100',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    textAlign: 'center',
+    fontSize: 13,
+  },
   listView: { flex: 1 },
   list: { paddingBottom: 20 },
   loader: { flex: 1 },

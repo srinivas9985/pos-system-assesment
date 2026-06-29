@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
+import { searchProducts } from '@/services/productSearch';
 import { useProductStore } from '@/store/productStore';
 import type { Product } from '@/types';
 
@@ -22,17 +23,14 @@ export function useProducts() {
 
 export function useProductSearch() {
   const products = useProductStore((s) => s.products);
+  const fromCache = useProductStore((s) => s.fromCache);
 
-  const search = async (query: string): Promise<Product[]> => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return products;
+  const search = useCallback(
+    async (query: string): Promise<Product[]> => {
+      return searchProducts(query, products, fromCache);
+    },
+    [products, fromCache]
+  );
 
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(normalized) ||
-        p.description.toLowerCase().includes(normalized)
-    );
-  };
-
-  return { search };
+  return { search, products, fromCache };
 }

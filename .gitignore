@@ -1,38 +1,23 @@
-# OS
-.DS_Store
-Thumbs.db
+# Internal assessment docs — never share with candidates
+.internal/
 
-# Environment
-.env
-.env.*
-!.env.example
-
-# Backend (Go + SQLite)
+# Backend
 backend/*.db
 backend/*.db-shm
 backend/*.db-wal
-backend/store.db
+backend/internal
+backend/go.sum
+backend/go.mod
+main.go
 
-# Dependencies
-node_modules/
-
-# Mobile (Expo / React Native)
+# Mobile
+mobile/node_modules/
 mobile/.expo/
 mobile/dist/
-mobile/web-build/
-mobile/npm-debug.*
-mobile/yarn-error.log
-mobile/.metro-health-check*
-mobile/node_modules
+mobile/android/
+mobile/ios/
+mobile/.env
 
-# Accidental root npm artifacts
-/package-lock.json
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Logs
+# General
+.DS_Store
 *.log

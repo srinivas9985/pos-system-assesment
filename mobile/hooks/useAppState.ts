@@ -1,12 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
 export function useAppState(onForeground: () => void) {
+  const callbackRef = useRef(onForeground);
+  callbackRef.current = onForeground;
+
   useEffect(() => {
-    AppState.addEventListener('change', (nextState) => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        onForeground();
+        callbackRef.current();
       }
     });
-  }, [onForeground]);
+    return () => subscription.remove();
+  }, []);
 }

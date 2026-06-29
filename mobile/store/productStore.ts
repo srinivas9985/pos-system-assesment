@@ -1,7 +1,20 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '@/services/api';
-import type { Category, Product, SyncEvent, SyncResponse, Tag } from '@/types';
+import {
+  loadAllCache,
+  persistProductState,
+  saveCategoriesCache,
+  saveProductsCache,
+  saveTagsCache,
+  upsertProductsCache,
+} from '@/services/cache';
+import {
+  applyEventsToState,
+  computeSyncSince,
+  flattenSyncEvents,
+} from '@/services/syncHelpers';
+import { useSyncStore } from '@/store/syncStore';
+import { isVersionConflictError, type Category, type Product, type SyncEvent, type SyncResponse, type Tag } from '@/types';
 
 interface ProductState {
   products: Product[];
@@ -9,14 +22,31 @@ interface ProductState {
   tags: Tag[];
   isLoading: boolean;
   nextCursor: string | null;
-  lastSyncVersion: number;
   error: string | null;
+  fromCache: boolean;
   loadProducts: () => Promise<void>;
   loadNextPage: () => Promise<void>;
   loadCategories: () => Promise<void>;
   loadTags: () => Promise<void>;
-  bumpProduct: (id: number, expectedVersion: number) => Promise<void>;
+  hydrateFromCache: () => Promise<boolean>;
+  refreshSilently: () => Promise<void>;
+  bumpProduct: (id: number, expectedVersion: number) => Promise<'ok' | 'conflict' | void>;
+  applySyncEvent: (event: SyncEvent) => void;
   applySync: (response: SyncResponse) => void;
+  fetchSync: () => Promise<SyncResponse>;
+  runSync: () => Promise<void>;
+}
+
+async function cacheCurrentState(
+  products: Product[],
+  categories: Category[],
+  tags: Tag[]
+): Promise<void> {
+  try {
+    await persistProductState(products, categories, tags);
+  } catch {
+    // cache write failures should not break the app
+  }
 }
 
 export const useProductStore = create<ProductState>((set, get) => ({
@@ -25,20 +55,46 @@ export const useProductStore = create<ProductState>((set, get) => ({
   tags: [],
   isLoading: false,
   nextCursor: null,
-  lastSyncVersion: 0,
   error: null,
+  fromCache: false,
+
+  hydrateFromCache: async () => {
+    const cached = await loadAllCache();
+    const hasData =
+      (cached.products?.length ?? 0) > 0 ||
+      (cached.categories?.length ?? 0) > 0 ||
+      (cached.tags?.length ?? 0) > 0;
+    if (!hasData) return false;
+
+    set({
+      products: cached.products ?? get().products,
+      categories: cached.categories ?? get().categories,
+      tags: cached.tags ?? get().tags,
+      nextCursor: cached.nextCursor ?? get().nextCursor,
+      fromCache: true,
+      error: null,
+    });
+    return true;
+  },
 
   loadProducts: async () => {
     set({ isLoading: true, error: null });
+    await get().hydrateFromCache();
     try {
       const response = await api.getProducts();
       set({
         products: response.data,
         nextCursor: response.next_cursor,
         isLoading: false,
+        fromCache: false,
       });
-    } catch (e) {
-      set({ isLoading: false, error: 'Failed to load products' });
+      await saveProductsCache(response.data, response.next_cursor);
+    } catch {
+      const restored = get().fromCache || (await get().hydrateFromCache());
+      set({
+        isLoading: false,
+        error: restored ? null : 'Failed to load products',
+      });
     }
   },
 
@@ -48,12 +104,15 @@ export const useProductStore = create<ProductState>((set, get) => ({
     set({ isLoading: true });
     try {
       const response = await api.getProducts(nextCursor);
+      const merged = [...products, ...response.data];
       set({
-        products: [...products, ...response.data],
+        products: merged,
         nextCursor: response.next_cursor,
         isLoading: false,
+        fromCache: false,
       });
-    } catch (e) {
+      await saveProductsCache(merged, response.next_cursor);
+    } catch {
       set({ isLoading: false });
     }
   },
@@ -61,41 +120,99 @@ export const useProductStore = create<ProductState>((set, get) => ({
   loadCategories: async () => {
     try {
       const categories = await api.getCategories();
-      set({ categories });
-    } catch (e) {
-      set({ error: 'Failed to load categories' });
+      set({ categories, fromCache: false });
+      await saveCategoriesCache(categories);
+    } catch {
+      await get().hydrateFromCache();
     }
   },
 
   loadTags: async () => {
     try {
       const tags = await api.getTags();
-      set({ tags });
-    } catch (e) {
-      set({ error: 'Failed to load tags' });
+      set({ tags, fromCache: false });
+      await saveTagsCache(tags);
+    } catch {
+      await get().hydrateFromCache();
     }
   },
 
-  bumpProduct: async (id: number, expectedVersion: number) => {
+  refreshSilently: async () => {
+    const { loadProducts, loadCategories, loadTags, runSync } = get();
+    try {
+      await Promise.all([loadProducts(), loadCategories(), loadTags()]);
+      await runSync();
+    } catch {
+      // silent refresh — cached data remains visible
+    }
+  },
+
+  bumpProduct: async (id, expectedVersion) => {
     try {
       const result = await api.bumpProduct(id, expectedVersion);
-      set((state) => ({
-        products: state.products.map((p) =>
+      set((state) => {
+        const products = state.products.map((p) =>
           p.id === id ? { ...p, version: result.version } : p
-        ),
-      }));
+        );
+        const updated = products.find((p) => p.id === id);
+        if (updated) void upsertProductsCache([updated]);
+        return { products };
+      });
+      return 'ok';
     } catch (e) {
+      if (isVersionConflictError(e)) {
+        const serverVersion = e.currentVersion;
+        set((state) => {
+          const products = state.products.map((p) =>
+            p.id === id ? { ...p, version: serverVersion } : p
+          );
+          const updated = products.find((p) => p.id === id);
+          if (updated) void upsertProductsCache([updated]);
+          return { products };
+        });
+        useSyncStore.getState().addConflict({
+          entityType: 'product',
+          entityId: id,
+          localVersion: expectedVersion + 1,
+          serverVersion,
+          detectedAt: new Date().toISOString(),
+        });
+        return 'conflict';
+      }
       console.error('Bump failed', e);
     }
   },
 
-  applySync: (response: SyncResponse) => {
-    const allEvents: SyncEvent[] = [
-      ...response.products,
-      ...response.categories,
-      ...response.tags,
-    ];
-    const maxVersion = allEvents.reduce((max, e) => Math.max(max, e.version), get().lastSyncVersion);
-    set({ lastSyncVersion: maxVersion });
+  applySyncEvent: (event) => {
+    set((state) => {
+      const next = applyEventsToState(state.products, state.categories, state.tags, [event]);
+      void cacheCurrentState(next.products, next.categories, next.tags);
+      return next;
+    });
+  },
+
+  applySync: (response) => {
+    const events = flattenSyncEvents(response);
+    if (events.length === 0) return;
+    set((state) => {
+      const next = applyEventsToState(state.products, state.categories, state.tags, events);
+      void cacheCurrentState(next.products, next.categories, next.tags);
+      return next;
+    });
+  },
+
+  fetchSync: async () => {
+    const { products, categories, tags } = get();
+    const since = computeSyncSince(products, categories, tags);
+    return api.getSync(since);
+  },
+
+  runSync: async () => {
+    try {
+      const response = await get().fetchSync();
+      get().applySync(response);
+    } catch (e) {
+      console.error('Sync failed', e);
+    }
   },
 }));

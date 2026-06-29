@@ -1,23 +1,28 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { POLL_INTERVAL_MS } from '@/constants/config';
-import { api } from '@/services/api';
+import { useProductStore } from '@/store/productStore';
 import type { SyncResponse } from '@/types';
 
-export function useSyncPoller(
-  sinceVersion: number,
-  onSync: (response: SyncResponse) => void
-) {
+export function useSyncPoller(onSync: (response: SyncResponse) => void) {
+  const onSyncRef = useRef(onSync);
+  onSyncRef.current = onSync;
+
   useEffect(() => {
     const poll = async () => {
-      const response = await api.getSync(sinceVersion);
-      const hasEvents =
-        response.products.length > 0 ||
-        response.categories.length > 0 ||
-        response.tags.length > 0;
-      if (hasEvents) onSync(response);
+      try {
+        const response = await useProductStore.getState().fetchSync();
+        const hasEvents =
+          response.products.length > 0 ||
+          response.categories.length > 0 ||
+          response.tags.length > 0;
+        if (hasEvents) onSyncRef.current(response);
+      } catch {
+        // network errors handled silently; next poll will retry
+      }
     };
 
     poll();
-    setInterval(poll, POLL_INTERVAL_MS);
-  }, [sinceVersion]);
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, []);
 }

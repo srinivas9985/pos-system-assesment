@@ -47,7 +47,7 @@ export interface Cart {
 export interface Order {
   id: number;
   cart_id: number;
-  status: 'draft' | 'paid' | 'failed';
+  status: 'draft' | 'success' | 'failed';
   created_at: string;
 }
 
@@ -69,10 +69,26 @@ export interface ProductsResponse {
   data: Product[];
   next_cursor: string | null;
   total_count: number;
+  /** Set by backend when `?search=` was applied — mobile uses this to detect API search support. */
+  search_applied?: boolean;
 }
 
 export interface SyncResponse {
   products: SyncEvent[];
   categories: SyncEvent[];
   tags: SyncEvent[];
+}
+
+export interface VersionConflictError extends Error {
+  status: 409;
+  currentVersion: number;
+}
+
+export function isVersionConflictError(e: unknown): e is VersionConflictError {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'status' in e &&
+    (e as VersionConflictError).status === 409
+  );
 }

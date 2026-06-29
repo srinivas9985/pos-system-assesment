@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { api } from '@/services/api';
 import { useProductStore } from '@/store/productStore';
 import { useCartStore } from '@/store/cartStore';
@@ -8,35 +8,44 @@ import type { Product } from '@/types';
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
+  const productId = Number(id);
+  const storeProduct = useProductStore((s) => s.products.find((p) => p.id === productId));
   const bumpProduct = useProductStore((s) => s.bumpProduct);
   const addItem = useCartStore((s) => s.addItem);
+  const [fetchedProduct, setFetchedProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const product = storeProduct ?? fetchedProduct;
 
   useEffect(() => {
-    const productId = Number(id);
-    const cached = useProductStore.getState().products.find((p) => p.id === productId);
-    if (cached) {
-      setProduct(cached);
+    if (storeProduct) {
       setLoading(false);
+      return;
     }
 
     api.getProduct(productId)
-      .then(setProduct)
+      .then(setFetchedProduct)
       .catch(() => {
-        if (!cached) Alert.alert('Error', 'Product not found');
+        Alert.alert('Error', 'Product not found');
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [productId, storeProduct]);
 
-  const handleBump = () => {
+  const handleBump = async () => {
     if (!product) return;
-    bumpProduct(product.id, product.version);
+    const result = await bumpProduct(product.id, product.version);
+    if (result === 'conflict') {
+      Alert.alert(
+        'Version conflict',
+        'This product was updated on another device. Your local version has been synced to the server.'
+      );
+    }
   };
 
   if (loading) return <ActivityIndicator style={{ flex: 1 }} />;
-  if (!product) return <Text style={styles.error}>Product not found</Text>;
+  if (!product) {
+    return <Text style={styles.error}>Product not found</Text>;
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -81,5 +90,5 @@ const styles = StyleSheet.create({
   addBtn: { flex: 1, backgroundColor: '#2e7d32', padding: 14, borderRadius: 8, alignItems: 'center' },
   bumpBtn: { flex: 1, backgroundColor: '#f57c00', padding: 14, borderRadius: 8, alignItems: 'center' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  error: { textAlign: 'center', marginTop: 40, fontSize: 16, color: '#f44336' },
+  error: { textAlign: 'center', marginTop: 40, fontSize: 16, color: '#f44336', paddingHorizontal: 16 },
 });
