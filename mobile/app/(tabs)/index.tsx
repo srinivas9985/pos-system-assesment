@@ -12,12 +12,12 @@ import type { Product, SyncEvent } from '@/types';
 
 export default function ProductsScreen() {
   const router = useRouter();
-  const { products, isLoading, nextCursor, loadNextPage } = useProducts();
+  const { products, isLoading, loadNextPage } = useProducts();
   const addItem = useCartStore((s) => s.addItem);
-  const applySync = useProductStore((s) => s.applySync);
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
-  const displayProducts = searchResults ?? products;
+  const displayProducts = isSearchActive ? (searchResults ?? []) : products;
 
   useWebSocket((event: SyncEvent) => {
     console.log('sync event', event);
@@ -28,8 +28,8 @@ export default function ProductsScreen() {
   });
 
   const handleEndReached = useCallback(() => {
-    if (!searchResults) loadNextPage();
-  }, [searchResults, loadNextPage]);
+    if (!isSearchActive) loadNextPage();
+  }, [isSearchActive, loadNextPage]);
 
   const handleAddToCart = useCallback(
     (product: Product) => {
@@ -40,12 +40,23 @@ export default function ProductsScreen() {
 
   return (
     <View style={styles.container}>
-      <SearchBar onResults={(r) => setSearchResults(r.length > 0 ? r : null)} />
+      <SearchBar
+        onResults={(results, active) => {
+          setSearchResults(results);
+          setIsSearchActive(active);
+        }}
+      />
       {isLoading && products.length === 0 ? (
         <ActivityIndicator size="large" color="#1976d2" style={styles.loader} />
+      ) : isSearchActive && displayProducts.length === 0 ? (
+        <View style={styles.emptyScreen}>
+          <Text style={styles.emptySearch}>No products found</Text>
+        </View>
       ) : (
         <FlatList
+          style={styles.listView}
           data={displayProducts}
+          keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
             <ProductCard
               product={item}
@@ -65,6 +76,20 @@ export default function ProductsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5', padding: 12 },
+  listView: { flex: 1 },
   list: { paddingBottom: 20 },
   loader: { flex: 1 },
+  emptyScreen: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  emptySearch: {
+    textAlign: 'center',
+    color: '#757575',
+    fontSize: 16,
+    fontWeight: '500',
+    lineHeight: 22,
+  },
 });

@@ -34,12 +34,6 @@ class ApiClient {
     return product;
   }
 
-  async searchProducts(query: string): Promise<Product[]> {
-    const res = await fetch(`${this.baseUrl}/products?search=${encodeURIComponent(query)}&limit=20`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json().then((r: ProductsResponse) => r.data);
-  }
-
   async bumpProduct(id: number, expectedVersion: number): Promise<{ id: number; version: number }> {
     const res = await fetch(`${this.baseUrl}/products/${id}/bump`, {
       method: 'POST',
