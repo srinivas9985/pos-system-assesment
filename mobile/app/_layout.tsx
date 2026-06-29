@@ -1,6 +1,8 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SyncManager } from '@/components/SyncManager';
+import { Toast } from '@/components/Toast';
 import { API_URL } from '@/constants/config';
 import { useCartStore } from '@/store/cartStore';
 import { useOrderStore } from '@/store/orderStore';
@@ -19,13 +21,14 @@ export default function RootLayout() {
   }, [initDeviceId]);
 
   return (
-    <>
+    <SafeAreaProvider>
       <SyncManager />
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="product/[id]" options={{ title: 'Product Detail' }} />
         <Stack.Screen name="order/[id]" options={{ title: 'Order' }} />
       </Stack>
-    </>
+      <Toast />
+    </SafeAreaProvider>
   );
 }

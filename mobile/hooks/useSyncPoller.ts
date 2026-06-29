@@ -8,9 +8,15 @@ export function useSyncPoller(onSync: (response: SyncResponse) => void) {
   onSyncRef.current = onSync;
 
   useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
     const poll = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
       try {
         const response = await useProductStore.getState().fetchSync();
+        if (cancelled) return;
         const hasEvents =
           response.products.length > 0 ||
           response.categories.length > 0 ||
@@ -18,11 +24,18 @@ export function useSyncPoller(onSync: (response: SyncResponse) => void) {
         if (hasEvents) onSyncRef.current(response);
       } catch {
         // network errors handled silently; next poll will retry
+      } finally {
+        inFlight = false;
       }
     };
 
-    poll();
-    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
-    return () => clearInterval(intervalId);
+    void poll();
+    const intervalId = setInterval(() => {
+      void poll();
+    }, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 }

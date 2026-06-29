@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { ProductImage } from '@/components/ProductImage';
 import { api } from '@/services/api';
 import { useProductStore } from '@/store/productStore';
 import { useCartStore } from '@/store/cartStore';
@@ -18,17 +19,31 @@ export default function ProductDetailScreen() {
   const product = storeProduct ?? fetchedProduct;
 
   useEffect(() => {
+    let cancelled = false;
+
     if (storeProduct) {
       setLoading(false);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    api.getProduct(productId)
-      .then(setFetchedProduct)
-      .catch(() => {
-        Alert.alert('Error', 'Product not found');
+    setLoading(true);
+    api
+      .getProduct(productId)
+      .then((product) => {
+        if (!cancelled) setFetchedProduct(product);
       })
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) Alert.alert('Error', 'Product not found');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [productId, storeProduct]);
 
   const handleBump = async () => {
@@ -49,7 +64,7 @@ export default function ProductDetailScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <Image source={{ uri: `https://picsum.photos/seed/${product.id}/600/300` }} style={styles.image} />
+      <ProductImage productId={product.id} size="detail" />
       <View style={styles.content}>
         <Text style={styles.name}>{product.name}</Text>
         <Text style={styles.price}>${product.price.toFixed(2)}</Text>
@@ -78,7 +93,6 @@ export default function ProductDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  image: { width: '100%', height: 200 },
   content: { padding: 16 },
   name: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
   price: { fontSize: 24, fontWeight: '700', color: '#2e7d32', marginBottom: 12 },

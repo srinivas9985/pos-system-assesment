@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { memo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { ProductImage } from '@/components/ProductImage';
 import type { Product } from '@/types';
 
 interface Props {
@@ -8,13 +9,11 @@ interface Props {
   onAddToCart?: (product: Product) => void;
 }
 
-export function ProductCard({ product, onPress, onAddToCart }: Props) {
-  const imageUrl = `https://picsum.photos/seed/${product.id}/300/200`;
-
+function ProductCardComponent({ product, onPress, onAddToCart }: Props) {
   return (
     <View style={styles.card}>
       <TouchableOpacity style={styles.main} onPress={() => onPress?.(product)}>
-        <Image source={{ uri: imageUrl }} style={styles.image} />
+        <ProductImage productId={product.id} />
         <View style={styles.info}>
           <Text style={styles.name} numberOfLines={2}>{product.name}</Text>
           <Text style={styles.price}>${product.price.toFixed(2)}</Text>
@@ -37,10 +36,11 @@ export function ProductCard({ product, onPress, onAddToCart }: Props) {
   );
 }
 
+export const ProductCard = memo(ProductCardComponent);
+
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 8, marginBottom: 8, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
   main: { flex: 1, flexDirection: 'row' },
-  image: { width: 100, height: 100 },
   info: { flex: 1, padding: 8 },
   name: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
   price: { fontSize: 16, fontWeight: '700', color: '#2e7d32' },

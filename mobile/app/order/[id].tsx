@@ -22,20 +22,29 @@ export default function OrderDetailScreen() {
   const order = orders.find((o) => o.id === orderId) ?? null;
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       if (deviceId) {
         await loadOrders();
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     };
     void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [deviceId, loadOrders]);
 
   const handlePay = async () => {
     if (!order) return;
     setPaying(true);
-    await payOrder(order.id);
-    setPaying(false);
+    try {
+      await payOrder(order.id);
+    } finally {
+      setPaying(false);
+    }
   };
 
   const statusColor = (status: Order['status']) =>

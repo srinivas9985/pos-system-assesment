@@ -16,12 +16,14 @@ export function SearchBar({ onResults }: Props) {
   const { search, products, fromCache } = useProductSearch();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
   const onResultsRef = useRef(onResults);
   onResultsRef.current = onResults;
 
   const runSearch = async (text: string, requestId: number) => {
     const trimmed = text.trim();
     if (!trimmed) {
+      if (!mountedRef.current) return;
       onResultsRef.current(null, false);
       setSearching(false);
       return;
@@ -29,13 +31,15 @@ export function SearchBar({ onResults }: Props) {
 
     setSearching(true);
     const results = await search(trimmed);
-    if (requestId !== requestIdRef.current) return;
+    if (!mountedRef.current || requestId !== requestIdRef.current) return;
     onResultsRef.current(results.slice(0, 20), true);
     setSearching(false);
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);

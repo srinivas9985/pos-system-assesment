@@ -137,10 +137,11 @@ export const useProductStore = create<ProductState>((set, get) => ({
     }
   },
 
+  /** Reconnect/foreground refresh — incremental sync only; never replace paginated products. */
   refreshSilently: async () => {
-    const { loadProducts, loadCategories, loadTags, runSync } = get();
+    const { loadCategories, loadTags, runSync } = get();
     try {
-      await Promise.all([loadProducts(), loadCategories(), loadTags()]);
+      await Promise.all([loadCategories(), loadTags()]);
       await runSync();
     } catch {
       // silent refresh — cached data remains visible

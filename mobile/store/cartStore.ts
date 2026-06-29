@@ -5,6 +5,7 @@ import { loadCartCache, saveCartCache } from '@/services/cartCache';
 import { loadProductsCache } from '@/services/cache';
 import { isNetworkConnected } from '@/services/network';
 import { useProductStore } from '@/store/productStore';
+import { useToastStore } from '@/store/toastStore';
 import type { Cart, CartItem, Order, Product } from '@/types';
 
 const DEVICE_ID_KEY = 'surat_device_id';
@@ -97,6 +98,15 @@ function buildCartPayload(
   return payload;
 }
 
+function showAddedToCartToast(productId: number, product?: Product) {
+  const name =
+    product?.name ??
+    useProductStore.getState().products.find((p) => p.id === productId)?.name;
+  useToastStore
+    .getState()
+    .show(name ? `${name} added to cart` : 'Added to cart');
+}
+
 interface CartState {
   cart: Cart | null;
   deviceId: string;
@@ -139,6 +149,19 @@ export const useCartStore = create<CartState>((set, get) => {
   const applyServerCart = async (cart: Cart) => {
     set({ cart, fromCache: false });
     await saveCartCache(cart);
+  };
+
+  /** Backend keeps cart items after order create — remove each item on server and locally. */
+  const clearServerCart = async (deviceId: string, items: CartItem[]): Promise<void> => {
+    for (const item of items) {
+      await api.cartAction({
+        action: 'remove',
+        product_id: item.product_id,
+        device_id: deviceId,
+      });
+    }
+    const fresh = await api.cartAction({ action: 'list', device_id: deviceId });
+    await applyServerCart(fresh);
   };
 
   const syncWithServer = async (): Promise<boolean> => {
@@ -260,7 +283,7 @@ export const useCartStore = create<CartState>((set, get) => {
       }
 
       const order = await api.createOrder(deviceId);
-      await applyServerCart(serverCart);
+      await clearServerCart(deviceId, serverCart.items ?? []);
       return order;
     },
 
@@ -279,6 +302,7 @@ export const useCartStore = create<CartState>((set, get) => {
             device_id: deviceId,
           });
           await applyServerCart(cart);
+          showAddedToCartToast(productId);
           return;
         } catch {
           // fall through to local cart
@@ -288,6 +312,7 @@ export const useCartStore = create<CartState>((set, get) => {
       const product = await findProduct(productId);
       const next = applyLocalAdd(base, productId, quantity, note, scheduledDelivery, product);
       await persistLocalCart(next);
+      showAddedToCartToast(productId, product);
     },
 
     removeItem: async (productId) => {

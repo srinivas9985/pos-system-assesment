@@ -60,6 +60,10 @@ export default function ProductsScreen() {
           )}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.3}
+          removeClippedSubviews
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          windowSize={7}
           ListFooterComponent={isLoading ? <ActivityIndicator color="#1976d2" /> : null}
           contentContainerStyle={styles.list}
         />

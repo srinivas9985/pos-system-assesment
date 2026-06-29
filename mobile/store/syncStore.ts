@@ -25,6 +25,10 @@ export const useSyncStore = create<SyncState>((set) => ({
   setConnected: (connected) => set({ connected }),
   updateVersion: (version) => set({ lastVersion: version }),
   addConflict: (conflict) =>
-    set((state) => ({ pendingConflicts: [...state.pendingConflicts, conflict] })),
+    set((state) => {
+      const next = [...state.pendingConflicts, conflict];
+      // Cap history so long-running sessions do not grow memory without bound.
+      return { pendingConflicts: next.length > 100 ? next.slice(-100) : next };
+    }),
   clearConflicts: () => set({ pendingConflicts: [] }),
 }));

@@ -18,7 +18,26 @@ export function useWebSocket(
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
 
+    const disposeSocket = (socket: WebSocket | null) => {
+      if (!socket) return;
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
+    };
+
     const connect = () => {
+      if (closed) return;
+
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      disposeSocket(ws);
       ws = new WebSocket(`${WS_URL}/ws`);
 
       ws.onopen = () => {
@@ -51,7 +70,8 @@ export function useWebSocket(
     return () => {
       closed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      ws?.close();
+      disposeSocket(ws);
+      ws = null;
       onConnectionChangeRef.current?.(false);
     };
   }, []);
