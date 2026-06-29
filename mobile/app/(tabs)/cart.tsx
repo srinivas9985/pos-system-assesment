@@ -5,16 +5,16 @@ import { CartBadge } from '@/components/CartBadge';
 import { api } from '@/services/api';
 
 export default function CartScreen() {
-  const { cart, loadCart, removeItem } = useCartStore();
+  const { cart, deviceId, loadCart, removeItem } = useCartStore();
 
   useEffect(() => {
-    loadCart();
-  }, []);
+    if (deviceId) loadCart();
+  }, [deviceId]);
 
   const handleCreateOrder = async () => {
-    const deviceId = useCartStore.getState().deviceId;
+    const id = deviceId || (await useCartStore.getState().initDeviceId());
     try {
-      await api.createOrder(deviceId);
+      await api.createOrder(id);
       Alert.alert('Order created', 'Your order is in draft. Go to Orders to pay.');
       loadCart();
     } catch {
