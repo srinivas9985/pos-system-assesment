@@ -15,9 +15,18 @@ export default function ProductDetailScreen() {
   const addItem = useCartStore((s) => s.addItem);
 
   useEffect(() => {
-    api.getProduct(Number(id))
+    const productId = Number(id);
+    const cached = useProductStore.getState().products.find((p) => p.id === productId);
+    if (cached) {
+      setProduct(cached);
+      setLoading(false);
+    }
+
+    api.getProduct(productId)
       .then(setProduct)
-      .catch(() => Alert.alert('Error', 'Product not found'))
+      .catch(() => {
+        if (!cached) Alert.alert('Error', 'Product not found');
+      })
       .finally(() => setLoading(false));
   }, [id]);
 

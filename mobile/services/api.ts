@@ -1,5 +1,10 @@
 import { API_URL, PAGE_SIZE } from '@/constants/config';
-import type { Category, Order, Product, ProductsResponse, SyncResponse, Tag } from '@/types';
+import type { Cart, Category, Order, Product, ProductsResponse, SyncResponse, Tag } from '@/types';
+
+function encodeListCursor(id: number): string {
+  const padded = String(Math.max(0, id - 1)).padStart(10, '0');
+  return globalThis.btoa(padded);
+}
 
 class ApiClient {
   private baseUrl: string;
@@ -17,9 +22,16 @@ class ApiClient {
   }
 
   async getProduct(id: number): Promise<Product> {
-    const res = await fetch(`${this.baseUrl}/products/${id}`);
+    const params = new URLSearchParams({
+      limit: '1',
+      after: encodeListCursor(id),
+    });
+    const res = await fetch(`${this.baseUrl}/products?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const body: ProductsResponse = await res.json();
+    const product = body.data[0];
+    if (!product || product.id !== id) throw new Error('Product not found');
+    return product;
   }
 
   async searchProducts(query: string): Promise<Product[]> {
